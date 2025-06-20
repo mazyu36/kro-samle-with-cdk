@@ -1,0 +1,10 @@
+apiVersion: kro.run/v1alpha1
+kind: Application
+metadata:
+  name: team-a-instance
+spec:
+  name: team-a
+  image: nginx:alpine
+  replica: 2
+  ingress:
+    enabled: true

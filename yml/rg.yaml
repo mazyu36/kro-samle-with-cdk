@@ -1,0 +1,95 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: my-application
+spec:
+  # ユーザーがRGDをインスタンス化する際に設定可能なものを定義
+  schema:
+    apiVersion: v1alpha1
+    kind: Application
+    spec:
+      # ユーザーが提供できるSpecフィールド
+      name: string
+      image: string | required=true
+      replica: integer | default=1
+      ingress:
+        enabled: boolean | default=false
+    status:
+      # コントローラーがインスタンスのstatusに注入するフィールド
+      namespaceName: ${ns.metadata.name}
+      deploymentConditions: ${deployment.status.conditions}
+      availableReplicas: ${deployment.status.availableReplicas}
+  # このAPIが管理するリソースを定義
+  resources:
+    - id: ns
+      template:
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: ${schema.spec.name}-ns
+          labels:
+            app: ${schema.spec.name}
+            managed-by: kro
+    - id: deployment
+      template:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${schema.spec.name}
+          namespace: ${ns.metadata.name}
+        spec:
+          replicas: ${schema.spec.replica}
+          selector:
+            matchLabels:
+              app: ${schema.spec.name}
+          template:
+            metadata:
+              labels:
+                app: ${schema.spec.name}
+            spec:
+              containers:
+                - name: ${schema.spec.name}
+                  image: ${schema.spec.image}
+                  ports:
+                    - containerPort: 80
+    - id: service
+      template:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: ${schema.spec.name}-service
+          namespace: ${ns.metadata.name}
+        spec:
+          selector: ${deployment.spec.selector.matchLabels}
+          ports:
+            - protocol: TCP
+              port: 80
+              targetPort: 80
+
+    - id: ingress
+      includeWhen:
+        - ${schema.spec.ingress.enabled}
+      template:
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: ${schema.spec.name}-ingress
+          namespace: ${ns.metadata.name}
+          annotations:
+            kubernetes.io/ingress.class: alb
+            alb.ingress.kubernetes.io/scheme: internet-facing
+            alb.ingress.kubernetes.io/target-type: ip
+            alb.ingress.kubernetes.io/healthcheck-path: /health
+            alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+            alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=60
+        spec:
+          rules:
+            - http:
+                paths:
+                  - path: "/"
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: ${service.metadata.name}
+                        port:
+                          number: 80

@@ -1,0 +1,9 @@
+apiVersion: kro.run/v1alpha1
+kind: Application
+metadata:
+  name: team-b-instance
+spec:
+  name: team-b
+  image: httpd:alpine
+  ingress:
+    enabled: true
